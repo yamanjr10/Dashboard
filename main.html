@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yaman Jr Dashboard</title>
+    
+    <!-- External Libraries via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+
+</head>
+<body>
+    <div class="anime-bg"></div>
+    
+    <!-- Save Indicator -->
+    <div class="save-indicator" id="saveIndicator">
+        <i class="fas fa-check-circle"></i> Changes saved!
+    </div>
+    
+    <!-- Add Activity Modal -->
+    <div id="activityModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold">Add New Activity</h3>
+                <button id="closeActivityModal" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form id="activityForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Activity Type</label>
+                    <select id="activityType" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700">
+                        <option value="anime">Anime</option>
+                        <option value="manga">Manga</option>
+                        <option value="project">Project</option>
+                        <option value="upload">Upload</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium mb-2">Activity Description</label>
+                    <textarea 
+                        id="activityContent" 
+                        class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700"
+                        placeholder="What did you do? (e.g., Watched episode 5 of Demon Slayer)"
+                        rows="3"
+                    ></textarea>
+                    <p class="text-xs text-gray-500 mt-1">Use *text* to make text bold</p>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" id="cancelActivity" class="btn btn-outline">Cancel</button>
+                    <button type="submit" class="btn">Add Activity</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto p-6 custom-scrollbar grid-bg">
+
+            <!-- Home Section -->
+            <section id="home" class="section active">
+                <div class="google-search-container">
+                    <!-- Google-style Logo -->
+                    <div class="google-logo" data-id="home-logo">
+                        Yaman Jr
+                    </div>
+                    
+                    <!-- Search Box -->
+                    <div class="search-box">
+                        <div class="search-icon">
+                            <i class="fas fa-search"></i>
+                        </div>
+                        <input type="text" class="search-input" placeholder="Search the web or type a URL" id="search-input">
+                    </div>
+                    
+                    <!-- Quick Links -->
+                    <div class="quick-links">
+                        <a href="https://aternos.org/server/" class="quick-link">
+                            <div class="quick-link-icon" style="background: #4285F4;" title="Aternos">
+                                <img src="https://yt3.ggpht.com/-oW5nolwndug/AAAAAAAAAAI/AAAAAAAAAAA/Io1Wy3aJ64o/s900-c-k-no/photo.jpg" alt="Aternos" class="w-5 h-5">
+                            </div>
+                            <span class="quick-link-label" data-id="quicklink-aternos">Aternos</span>
+                        </a>
+                        <a href="https://chatgpt.com/" class="quick-link" title="ChatGPT">
+                            <div class="quick-link-icon" style="background: #34A853;">
+                                <i class="fas fa-robot text-white"></i>
+                            </div>
+                            <span class="quick-link-label" data-id="quicklink-chatgpt">ChatGPT</span>
+                        </a>
+                        <a href="https://chat.deepseek.com/" class="quick-link" title="DeepSeek">
+                            <div class="quick-link-icon" style="background: #FBBC05;">
+                                <i class="fas fa-brain text-white"></i>
+                            </div>
+                            <span class="quick-link-label" data-id="quicklink-deepseek">DeepSeek</span>
+                        </a>
+                        <a href="https://animekai.to/home" class="quick-link" title="Anime Kai">
+                            <div class="quick-link-icon" style="background: #06D6A0;">
+                                <i class="fas fa-tv text-white"></i>
+                            </div>
+                            <span class="quick-link-label" data-id="quicklink-animekai">Anime Kai</span>
+                        </a>
+                        <a href="https://drive.google.com/drive/u-4/my-drive" class="quick-link" title="Google Drive">
+                            <div class="quick-link-icon" style="background: #8B5CF6;">
+                                <i class="fas fa-hdd text-white"></i>
+                            </div>
+                            <span class="quick-link-label editable" data-id="quicklink-drive">Drive</span>
+                        </a>
+                        <a href="https://github.com/yamanjr10/JrEditz" class="quick-link" title="Github">
+                            <div class="quick-link-icon" style="background: #118AB2;">
+                                <i class="fa fa-github" aria-hidden="true"></i>
+                            </div>
+                            <span class="quick-link-label" data-id="quicklink-github">Github</span>
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- Enhanced Home Content Grid -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
+                    <!-- Left Column -->
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Quick Stats Overview -->
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <i class="fas fa-chart-line"></i>
+                                    <span data-id="stats-overview-title">Quick Stats Overview</span>
+                                </div>
+                                <button class="btn btn-outline text-xs" id="editStatsHome">
+                                    <i class="fas fa-save"></i> Save
+                                </button>
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 p-4" id="homeStatsOverview">
+                                <!-- Stats will be loaded here -->
+                            </div>
+                        </div>
+                        
+                        <!-- Latest Anime Updates -->
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <i class="fas fa-tv"></i>
+                                    <span data-id="anime-updates-title">Latest Anime Updates</span>
+                                </div>
+                                <button class="btn btn-outline text-xs" id="refreshAnime">
+                                    <i class="fas fa-sync-alt"></i> Refresh
+                                </button>
+                            </div>
+                            <div class="p-4">
+                                <div id="animeUpdatesContainer" class="space-y-4 max-h-96 overflow-y-auto custom-scrollbar">
+                                    <!-- Anime updates will be loaded here -->
+                                    <div class="text-center py-4">
+                                        <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                                        <p>Loading anime updates...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Right Column -->
+                    <div class="space-y-6">
+                        <!-- Time and Date Widget -->
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <i class="fas fa-clock"></i>
+                                    <span data-id="time-date-title">Current Time</span>
+                                </div>
+                            </div>
+                            <div class="p-4 text-center">
+                                <div class="text-3xl font-bold mb-2" id="currentTime">--:--:--</div>
+                                <div class="text-lg" id="currentDate">---, --- --, ----</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Enhanced Weather Widget -->
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <i class="fas fa-cloud-sun"></i>
+                                    <span data-id="weather-title">Weather</span>
+                                </div>
+                                <button class="btn btn-outline text-xs" id="refreshWeather">
+                                    <i class="fas fa-sync-alt"></i> Refresh
+                                </button>
+                            </div>
+                            <div class="p-4">
+                                <div class="weather-widget mb-4">
+                                    <div class="weather-icon text-4xl text-yellow-500" id="weatherIcon">
+                                        <i class="fas fa-sun"></i>
+                                    </div>
+                                    <div class="weather-info">
+                                        <h3 class="text-2xl font-bold" id="weatherTemp">--°C</h3>
+                                        <div class="weather-details">
+                                            <p id="weatherLocation">Detecting location...</p>
+                                            <p id="weatherDescription">Loading weather data...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 text-sm">
+                                    <div class="flex justify-between">
+                                        <span>Feels like:</span>
+                                        <span id="feelsLike">--°C</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span>Humidity:</span>
+                                        <span id="humidity">--%</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span>Wind:</span>
+                                        <span id="windSpeed">-- km/h</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span>Visibility:</span>
+                                        <span id="visibility">-- km</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- New: Social Media Stats -->
+    <div class="card" data-widget="social-stats">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-chart-line"></i>
+                <span data-id="social-stats-title">Social Stats</span>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div class="social-platform text-center p-3 bg-blue-50 dark:bg-blue-900 rounded-lg">
+                <i class="fab fa-youtube text-2xl text-red-500 mb-2"></i>
+                <div class="text-lg font-bold editable">21</div>
+                <div class="text-xs text-gray-600 dark:text-gray-400">Subscribers</div>
+                <div class="text-xs text-green-500 mt-1">Jr Editz</div>
+            </div>
+            <div class="social-platform text-center p-3 bg-purple-50 dark:bg-purple-900 rounded-lg">
+                <i class="fab fa-discord text-2xl text-black dark:text-white mb-2"></i>
+                <div class="text-lg font-bold editable">9</div>
+                <div class="text-xs text-gray-600 dark:text-gray-400">Members</div>
+                <div class="text-xs text-green-500 mt-1">Jr Editz</div>
+            </div>
+            <div class="social-platform text-center p-3 bg-pink-50 dark:bg-pink-900 rounded-lg">
+                <i class="fab fa-instagram text-2xl text-pink-500 mb-2"></i>
+                <div class="text-lg font-bold editable">515</div>
+                <div class="text-xs text-gray-600 dark:text-gray-400">Followers</div>
+                <div class="text-xs text-green-500 mt-1">yamanjr10</div>
+            </div>
+        </div>
+    </div>
+                        <!-- Trending Anime -->
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <i class="fas fa-fire"></i>
+                                    <span data-id="trending-anime-title">Trending Anime</span>
+                                </div>
+                            </div>
+                            <div class="p-4">
+                                <div id="trendingAnimeContainer" class="space-y-3 max-h-60 overflow-y-auto custom-scrollbar">
+                                    <!-- Trending anime will be loaded here -->
+                                    <div class="text-center py-2">
+                                        <i class="fas fa-spinner fa-spin text-lg mb-1"></i>
+                                        <p class="text-sm">Loading trending anime...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+</html>
