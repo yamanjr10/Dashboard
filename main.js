@@ -1,1048 +1,2099 @@
-// Shared Recent Activity System
-class ActivityManager {
-    constructor() {
-        this.activities = this.loadActivities();
-        this.maxActivities = 10;
-    }
+// ===============================
+// CONFIGURATION & INITIALIZATION
+// ===============================
 
-    loadActivities() {
-        const saved = localStorage.getItem('sharedActivities');
-        if (saved) {
-            return JSON.parse(saved);
-        }
-        
-        return [
-            {
-                id: 1,
-                type: 'anime',
-                icon: 'fas fa-tv',
-                iconColor: 'blue',
-                content: 'Watched episode 12 of <span class="font-medium">Attack on Titan</span>',
-                timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-                editable: true
-            },
-            {
-                id: 2,
-                type: 'project',
-                icon: 'fas fa-check',
-                iconColor: 'green',
-                content: 'Completed project <span class="font-medium">Portfolio Redesign</span>',
-                timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-                editable: true
-            },
-            {
-                id: 3,
-                type: 'manga',
-                icon: 'fas fa-book',
-                iconColor: 'purple',
-                content: 'Read chapter 45 of <span class="font-medium">One Piece</span>',
-                timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-                editable: true
-            },
-            {
-                id: 4,
-                type: 'upload',
-                icon: 'fas fa-upload',
-                iconColor: 'yellow',
-                content: 'Uploaded new video <span class="font-medium">Tutorial</span>',
-                timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-                editable: true
-            }
-        ];
-    }
+// API Keys (Replace with your own keys)
+const OPENWEATHER_API_KEY = 'YOUR_OPENWEATHER_API_KEY'; // Get from https://openweathermap.org/api
+const YOUTUBE_API_KEY = 'AIzaSyABUNd3GL6-500X1gMWl9b__u7nGjVPNJw'; // Already in use
+const GITHUB_USERNAME = 'yamanjr10'; // Your GitHub username
 
-    saveActivities() {
-        localStorage.setItem('sharedActivities', JSON.stringify(this.activities));
-    }
+// Sample data for demonstration
+const SAMPLE_WALLPAPERS = [
+  'https://images.unsplash.com/photo-1578662996442-48f60103fc96?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80',
+  'https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1974&q=80',
+  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+];
 
-    addActivity(activity) {
-        activity.id = Date.now();
-        activity.timestamp = new Date().toISOString();
-        
-        this.activities.unshift(activity);
-        
-        if (this.activities.length > this.maxActivities) {
-            this.activities = this.activities.slice(0, this.maxActivities);
-        }
-        
-        this.saveActivities();
-        this.updateHomeActivityDisplay();
-        
-        return activity.id;
-    }
+const SAMPLE_QUOTES = [
+  { text: "The only way to do great work is to love what you do.", author: "Steve Jobs" },
+  { text: "Life is what happens to you while you're busy making other plans.", author: "John Lennon" },
+  { text: "The future belongs to those who believe in the beauty of their dreams.", author: "Eleanor Roosevelt" }
+];
 
-    updateActivity(id, newContent) {
-        const activity = this.activities.find(a => a.id === id);
-        if (activity && activity.editable) {
-            activity.content = newContent;
-            this.saveActivities();
-            this.updateHomeActivityDisplay();
-        }
-    }
+// ===============================
+// NOTIFICATION SYSTEM
+// ===============================
 
-    deleteActivity(id) {
-        this.activities = this.activities.filter(a => a.id !== id);
-        this.saveActivities();
-        this.updateHomeActivityDisplay();
-    }
+class NotificationSystem {
+  constructor() {
+    this.storageKey = 'notifications';
+    this.maxNotifications = 50;
+    this.init();
+  }
 
-    getRecentActivities(limit = 5) {
-        return this.activities.slice(0, limit);
-    }
+  init() {
+    this.setupEventListeners();
+    this.loadNotifications();
+  }
 
-    getAllActivities() {
-        return this.activities;
-    }
+  setupEventListeners() {
+    const bell = document.getElementById('notificationBell');
+    const center = document.getElementById('notificationCenter');
+    const clearBtn = document.getElementById('clearAllNotifications');
 
-    updateHomeActivityDisplay() {
-        const container = document.getElementById('homeRecentActivity');
-        if (container) {
-            this.renderActivities(container, 4);
-        }
-    }
+    if (bell) bell.addEventListener('click', () => this.toggleCenter());
+    if (clearBtn) clearBtn.addEventListener('click', () => this.clearAll());
 
-    renderActivities(container, limit) {
-        if (!container) return;
+    // Close notification center when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!center.contains(e.target) && !bell.contains(e.target)) {
+        this.hideCenter();
+      }
+    });
+  }
 
-        const activitiesToShow = this.activities.slice(0, limit);
-        
-        if (activitiesToShow.length === 0) {
-            container.innerHTML = `
-                <div class="text-center py-4 text-gray-500">
-                    <i class="fas fa-inbox text-2xl mb-2"></i>
-                    <p>No recent activities</p>
-                    <button class="btn btn-outline mt-2 text-xs" onclick="document.getElementById('addActivityHome').click()">
-                        <i class="fas fa-plus"></i> Add Your First Activity
+  notify({ type = 'info', title, message, sticky = false, id = null }) {
+    const notification = {
+      id: id || Date.now().toString(),
+      type,
+      title,
+      message,
+      timestamp: new Date().toISOString(),
+      read: false
+    };
+
+    this.showToast(notification);
+    this.saveNotification(notification);
+    this.updateBellIndicator();
+  }
+
+  showToast(notification) {
+    const toast = document.createElement('div');
+    toast.className = `toast ${notification.type}`;
+    toast.innerHTML = `
+                    <div class="toast-icon">
+                        <i class="fas fa-${this.getIconForType(notification.type)}"></i>
+                    </div>
+                    <div class="toast-content">
+                        <div class="toast-title">${notification.title}</div>
+                        <div class="toast-message">${notification.message}</div>
+                    </div>
+                    <button class="toast-close">
+                        <i class="fas fa-times"></i>
                     </button>
-                </div>
-            `;
-            return;
-        }
+                `;
 
-        container.innerHTML = activitiesToShow.map(activity => {
-            const timeAgo = this.getTimeAgo(activity.timestamp);
-            
-            return `
-                <div class="flex items-start space-x-3 activity-item" data-activity-id="${activity.id}">
-                    <div class="w-8 h-8 rounded-full bg-${activity.iconColor}-100 dark:bg-${activity.iconColor}-900 flex items-center justify-center text-${activity.iconColor}-600 dark:text-${activity.iconColor}-400 mt-1 flex-shrink-0">
-                        <i class="${activity.icon}"></i>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <p class="text-sm text-gray-700 dark:text-gray-300 activity-content">${activity.content}</p>
-                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 activity-time">${timeAgo}</p>
-                    </div>
-                    ${activity.editable ? `
-                        <div class="activity-actions opacity-0 transition-opacity flex space-x-1">
-                            <button class="edit-activity text-gray-400 hover:text-blue-500 p-1 rounded transition-colors" title="Edit">
-                                <i class="fas fa-edit text-xs"></i>
-                            </button>
-                            <button class="delete-activity text-gray-400 hover:text-red-500 p-1 rounded transition-colors" title="Delete">
-                                <i class="fas fa-trash text-xs"></i>
+    document.body.appendChild(toast);
+
+    // Auto-remove after 5 seconds unless sticky
+    if (!notification.sticky) {
+      setTimeout(() => {
+        if (toast.parentNode) {
+          toast.style.animation = 'slideInRight 0.3s ease reverse';
+          setTimeout(() => toast.remove(), 300);
+        }
+      }, 5000);
+    }
+
+    // Close button
+    toast.querySelector('.toast-close').addEventListener('click', () => {
+      toast.style.animation = 'slideInRight 0.3s ease reverse';
+      setTimeout(() => toast.remove(), 300);
+    });
+  }
+
+  getIconForType(type) {
+    const icons = {
+      success: 'check-circle',
+      error: 'exclamation-circle',
+      warning: 'exclamation-triangle',
+      info: 'info-circle'
+    };
+    return icons[type] || 'info-circle';
+  }
+
+  saveNotification(notification) {
+    const notifications = this.getStoredNotifications();
+    notifications.unshift(notification);
+
+    // Keep only the most recent notifications
+    if (notifications.length > this.maxNotifications) {
+      notifications.splice(this.maxNotifications);
+    }
+
+    sessionStorage.setItem(this.storageKey, JSON.stringify(notifications));
+    this.renderNotifications();
+  }
+
+  getStoredNotifications() {
+    return JSON.parse(sessionStorage.getItem(this.storageKey) || '[]');
+  }
+
+  renderNotifications() {
+    const container = document.getElementById('notificationList');
+    const notifications = this.getStoredNotifications();
+
+    if (!container) return;
+
+    container.innerHTML = notifications.length ?
+      notifications.map(notif => `
+                        <div class="notification-item">
+                            <div class="toast-icon">
+                                <i class="fas fa-${this.getIconForType(notif.type)}"></i>
+                            </div>
+                            <div class="toast-content">
+                                <div class="toast-title">${notif.title}</div>
+                                <div class="toast-message">${notif.message}</div>
+                                <div class="text-xs text-gray-500 mt-1">${new Date(notif.timestamp).toLocaleTimeString()}</div>
+                            </div>
+                            <button class="notification-dismiss" data-id="${notif.id}">
+                                <i class="fas fa-times"></i>
                             </button>
                         </div>
-                    ` : ''}
-                </div>
-            `;
-        }).join('');
+                    `).join('') :
+      '<div class="text-center py-4 text-gray-500">No notifications</div>';
 
-        this.attachActivityEventListeners(container);
-    }
-
-    attachActivityEventListeners(container) {
-        container.querySelectorAll('.activity-item').forEach(item => {
-            item.addEventListener('mouseenter', () => {
-                const actions = item.querySelector('.activity-actions');
-                if (actions) {
-                    actions.classList.remove('opacity-0');
-                    actions.classList.add('opacity-100');
-                }
-            });
-            
-            item.addEventListener('mouseleave', () => {
-                const actions = item.querySelector('.activity-actions');
-                if (actions) {
-                    actions.classList.add('opacity-0');
-                    actions.classList.remove('opacity-100');
-                }
-            });
-        });
-
-        container.querySelectorAll('.edit-activity').forEach(button => {
-            button.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const activityItem = e.target.closest('.activity-item');
-                const activityId = parseInt(activityItem.dataset.activityId);
-                const contentElement = activityItem.querySelector('.activity-content');
-                
-                const currentContent = contentElement.innerHTML;
-                const newContent = prompt('Edit activity:', this.stripHtml(currentContent));
-                
-                if (newContent !== null && newContent.trim() !== '') {
-                    const formattedContent = this.formatActivityContent(newContent);
-                    this.updateActivity(activityId, formattedContent);
-                }
-            });
-        });
-
-        container.querySelectorAll('.delete-activity').forEach(button => {
-            button.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const activityItem = e.target.closest('.activity-item');
-                const activityId = parseInt(activityItem.dataset.activityId);
-                
-                if (confirm('Are you sure you want to delete this activity?')) {
-                    this.deleteActivity(activityId);
-                }
-            });
-        });
-    }
-
-    stripHtml(html) {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = html;
-        return tmp.textContent || tmp.innerText || '';
-    }
-
-    formatActivityContent(text) {
-        return text
-            .replace(/\b(episode \d+ of)\s+(.*?)(?=\s|$)/gi, '$1 <span class="font-medium">$2</span>')
-            .replace(/\b(chapter \d+ of)\s+(.*?)(?=\s|$)/gi, '$1 <span class="font-medium">$2</span>')
-            .replace(/\b(project)\s+(.*?)(?=\s|$)/gi, '$1 <span class="font-medium">$2</span>')
-            .replace(/\b(video)\s+(.*?)(?=\s|$)/gi, '$1 <span class="font-medium">$2</span>')
-            .replace(/\b(tutorial)\s+(.*?)(?=\s|$)/gi, '$1 <span class="font-medium">$2</span>')
-            .replace(/\*(.*?)\*/g, '<span class="font-medium">$1</span>');
-    }
-
-    getTimeAgo(timestamp) {
-        const now = new Date();
-        const past = new Date(timestamp);
-        const diffInSeconds = Math.floor((now - past) / 1000);
-        
-        if (diffInSeconds < 60) return 'Just now';
-        if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
-        if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
-        if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)} days ago`;
-        return past.toLocaleDateString();
-    }
-}
-
-// Shared Stats Overview System
-class StatsManager {
-    constructor() {
-        this.stats = this.loadStats();
-    }
-
-    loadStats() {
-        const saved = localStorage.getItem('sharedStats');
-        if (saved) {
-            return JSON.parse(saved);
-        }
-        
-        return [
-            { id: 'projects', value: '23', label: 'Projects', editable: true },
-            { id: 'anime-completed', value: '255', label: 'Anime Completed', editable: true },
-            { id: 'manga-completed', value: '8', label: 'Manga Completed', editable: true },
-            { id: 'badges', value: '15', label: 'Badges', editable: true }
-        ];
-    }
-
-    saveStats() {
-        localStorage.setItem('sharedStats', JSON.stringify(this.stats));
-    }
-
-    updateStat(id, newValue) {
-        const stat = this.stats.find(s => s.id === id);
-        if (stat && stat.editable) {
-            stat.value = newValue;
-            this.saveStats();
-            this.updateHomeStatsDisplay();
-        }
-    }
-
-    getAllStats() {
-        return this.stats;
-    }
-
-    updateHomeStatsDisplay() {
-        const container = document.getElementById('homeStatsOverview');
-        if (container) {
-            this.renderStats(container);
-        }
-    }
-
-    renderStats(container) {
-        if (!container) return;
-
-        container.innerHTML = this.stats.map(stat => {
-            return `
-                <div class="stat-card">
-                    <div class="stat-value editable" data-stat-id="${stat.id}" contenteditable="${stat.editable}">${stat.value}</div>
-                    <div class="stat-label">${stat.label}</div>
-                </div>
-            `;
-        }).join('');
-
-        this.attachStatsEventListeners(container);
-    }
-
-    attachStatsEventListeners(container) {
-        container.querySelectorAll('.editable[contenteditable="true"]').forEach(element => {
-            element.addEventListener('blur', (e) => {
-                const statId = e.target.getAttribute('data-stat-id');
-                const newValue = e.target.textContent.trim();
-                
-                if (newValue && !isNaN(newValue)) {
-                    this.updateStat(statId, newValue);
-                    showSaveIndicator();
-                } else {
-                    const stat = this.stats.find(s => s.id === statId);
-                    e.target.textContent = stat.value;
-                }
-            });
-
-            element.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    e.target.blur();
-                }
-            });
-        });
-    }
-}
-
-// Global managers
-const activityManager = new ActivityManager();
-const statsManager = new StatsManager();
-
-// Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    initializeActivitySystem();
-    initializeStatsSystem();
-    
-    // Load saved content from localStorage
-    loadSavedContent();
-    
-    // Make all elements with class "editable" editable
-    const editableElements = document.querySelectorAll('.editable');
-    
-    editableElements.forEach(element => {
-        // Set contenteditable attribute
-        element.setAttribute('contenteditable', 'true');
-        
-        // Add event listener for input changes
-        element.addEventListener('input', function() {
-            const elementId = this.getAttribute('data-id');
-            const content = this.textContent;
-            
-            // Save to localStorage
-            localStorage.setItem(elementId, content);
-            
-            // Show save indicator
-            showSaveIndicator();
-        });
-        
-        // Add focus and blur styling
-        element.addEventListener('focus', function() {
-            this.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
-            this.style.outline = '2px solid var(--accent)';
-        });
-        
-        element.addEventListener('blur', function() {
-            this.style.backgroundColor = '';
-            this.style.outline = '';
-        });
+    // Add event listeners to dismiss buttons
+    container.querySelectorAll('.notification-dismiss').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.dismissNotification(btn.dataset.id);
+      });
     });
-    
-    // Initialize search functionality
-    initializeSearch();
-    
-    // Initialize weather - try cached data first, then fetch fresh data
-    if (!loadCachedWeatherData()) {
-        initializeWeather();
+  }
+
+  dismissNotification(id) {
+    const notifications = this.getStoredNotifications().filter(n => n.id !== id);
+    sessionStorage.setItem(this.storageKey, JSON.stringify(notifications));
+    this.renderNotifications();
+    this.updateBellIndicator();
+  }
+
+  clearAll() {
+    sessionStorage.setItem(this.storageKey, '[]');
+    this.renderNotifications();
+    this.updateBellIndicator();
+  }
+
+  toggleCenter() {
+    const center = document.getElementById('notificationCenter');
+    center.classList.toggle('active');
+  }
+
+  hideCenter() {
+    const center = document.getElementById('notificationCenter');
+    center.classList.remove('active');
+  }
+
+  updateBellIndicator() {
+    const bell = document.getElementById('notificationBell');
+    const notifications = this.getStoredNotifications();
+    const unreadCount = notifications.filter(n => !n.read).length;
+
+    if (unreadCount > 0) {
+      bell.classList.add('has-notifications');
     } else {
-        // Still initialize for future refreshes
-        initializeWeather();
-        // Refresh data in background
-        setTimeout(getWeatherData, 1000);
+      bell.classList.remove('has-notifications');
+    }
+  }
+
+  loadNotifications() {
+    this.renderNotifications();
+    this.updateBellIndicator();
+  }
+}
+
+// Global notify function
+function notify(options) {
+  window.notificationSystem.notify(options);
+}
+
+// ===============================
+// PROFILE WIDGET (with local avatar upload)
+// ===============================
+
+class ProfileWidget {
+  constructor() {
+    this.storageKey = 'userProfile';
+    this.visitKey = 'lastVisit';
+    this.streakKey = 'userStreak';
+    this.init();
+  }
+
+  init() {
+    this.loadProfile();
+    this.setupEventListeners();
+    this.updateStreak();
+    this.updateGreeting();
+  }
+
+  loadProfile() {
+    const profile = JSON.parse(localStorage.getItem(this.storageKey)) || {
+      name: 'Guest',
+      avatarUrl: ''
+    };
+
+    this.updateProfileDisplay(profile);
+    return profile;
+  }
+
+  updateProfileDisplay(profile) {
+    const greetingEl = document.getElementById('greetingText');
+    const avatarEl = document.getElementById('profileAvatar');
+
+    if (greetingEl) {
+      const timeBasedGreeting = this.getTimeBasedGreeting();
+      greetingEl.textContent = `${timeBasedGreeting}, ${profile.name}!`;
     }
 
-    // Initialize time and date
-    updateTimeAndDate();
-    setInterval(updateTimeAndDate, 1000);
+    if (avatarEl) {
+      if (profile.avatarUrl) {
+        avatarEl.style.backgroundImage = `url(${profile.avatarUrl})`;
+        avatarEl.classList.add('avatar-image');
+        avatarEl.textContent = '';
+      } else {
+        avatarEl.style.backgroundImage = '';
+        avatarEl.classList.remove('avatar-image');
+        avatarEl.classList.add('avatar-initials');
+        avatarEl.textContent = profile.name.charAt(0).toUpperCase();
+      }
+    }
+  }
 
-    // Initialize anime data
-    const homeSection = document.getElementById('home');
-    const observer = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-                if (homeSection.classList.contains('active')) {
-                    // Load anime data with a small delay to improve perceived performance
-                    setTimeout(() => {
-                        fetchLatestAnimeUpdates();
-                        fetchTrendingAnime();
-                    }, 300);
-                }
-            }
-        });
+  getTimeBasedGreeting() {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  updateGreeting() {
+    const profile = this.loadProfile();
+    this.updateProfileDisplay(profile);
+  }
+
+  updateStreak() {
+    const now = new Date();
+    const today = now.toDateString();
+    const lastVisit = localStorage.getItem(this.visitKey);
+    let streak = parseInt(localStorage.getItem(this.streakKey)) || 0;
+
+    if (lastVisit !== today) {
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      if (lastVisit === yesterday.toDateString()) {
+        streak += 1;
+      } else if (lastVisit && lastVisit !== today) {
+        streak = 1;
+      } else if (!lastVisit) {
+        streak = 1;
+      }
+
+      localStorage.setItem(this.streakKey, streak.toString());
+      localStorage.setItem(this.visitKey, today);
+    }
+
+    const streakEl = document.getElementById('streakCount');
+    if (streakEl) {
+      streakEl.textContent = `${streak} day${streak !== 1 ? 's' : ''}`;
+    }
+  }
+
+  setupEventListeners() {
+    const editBtn = document.getElementById('editProfileBtn');
+    const modal = document.getElementById('profileModal');
+    const closeBtn = document.getElementById('closeProfileModal');
+    const cancelBtn = document.getElementById('cancelProfileEdit');
+    const form = document.getElementById('profileForm');
+    const fileInput = document.getElementById('profileAvatarFile');
+    const previewImg = document.getElementById('avatarPreview');
+
+    if (editBtn) editBtn.addEventListener('click', () => this.showModal());
+    if (closeBtn) closeBtn.addEventListener('click', () => this.hideModal());
+    if (cancelBtn) cancelBtn.addEventListener('click', () => this.hideModal());
+    if (form) form.addEventListener('submit', (e) => this.saveProfile(e));
+
+    // Handle avatar file selection + live preview
+    if (fileInput) {
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          previewImg.src = event.target.result;
+          previewImg.classList.remove('hidden');
+          previewImg.dataset.previewData = event.target.result; // store Base64 temporarily
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // Close modal when clicking outside
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) this.hideModal();
+      });
+    }
+  }
+
+  showModal() {
+    const modal = document.getElementById('profileModal');
+    const profile = this.loadProfile();
+    const nameInput = document.getElementById('profileName');
+    const previewImg = document.getElementById('avatarPreview');
+
+    if (nameInput) nameInput.value = profile.name;
+    if (previewImg && profile.avatarUrl) {
+      previewImg.src = profile.avatarUrl;
+      previewImg.classList.remove('hidden');
+    }
+    if (modal) modal.classList.remove('hidden');
+  }
+
+  hideModal() {
+    const modal = document.getElementById('profileModal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  saveProfile(e) {
+    e.preventDefault();
+
+    const nameInput = document.getElementById('profileName');
+    const previewImg = document.getElementById('avatarPreview');
+
+    const profile = {
+      name: nameInput.value.trim() || 'Guest',
+      avatarUrl: previewImg.dataset.previewData || ''
+    };
+
+    localStorage.setItem(this.storageKey, JSON.stringify(profile));
+    this.updateProfileDisplay(profile);
+    this.hideModal();
+
+    notify({
+      type: 'success',
+      title: 'Profile Updated',
+      message: 'Your profile has been successfully updated.'
     });
-    
-    observer.observe(homeSection, { attributes: true });
-    
-    // Also load immediately if home is already active
-    if (homeSection.classList.contains('active')) {
-        setTimeout(() => {
-            fetchLatestAnimeUpdates();
-            fetchTrendingAnime();
-        }, 500);
-    }
-    
-    // Refresh button functionality
-    const refreshAnimeBtn = document.getElementById('refreshAnime');
-    if (refreshAnimeBtn) {
-        refreshAnimeBtn.addEventListener('click', function() {
-            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing';
-            this.disabled = true;
-            
-            Promise.all([fetchLatestAnimeUpdates(), fetchTrendingAnime()]).finally(() => {
-                setTimeout(() => {
-                    this.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
-                    this.disabled = false;
-                }, 1000);
-            });
+  }
+}
+
+
+// ===============================
+// THEME SWITCHER
+// ===============================
+
+class ThemeSwitcher {
+  constructor() {
+    this.storageKey = 'dashboardTheme';
+    this.wallpaperKey = 'dashboardWallpaper';
+    this.currentTheme = 'dark';
+    this.currentWallpaper = 0;
+    this.init();
+  }
+
+  init() {
+    this.loadPreferences();
+    this.setupEventListeners();
+    this.applyTheme();
+    this.applyWallpaper();
+  }
+
+  loadPreferences() {
+    this.currentTheme = localStorage.getItem(this.storageKey) || 'dark';
+    this.currentWallpaper = parseInt(localStorage.getItem(this.wallpaperKey)) || 0;
+  }
+
+  setupEventListeners() {
+    // Theme buttons
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        this.setTheme(e.target.dataset.theme);
+      });
+    });
+
+    // Wallpaper buttons
+    document.querySelectorAll('.wallpaper-btn').forEach(btn => {
+      if (btn.id !== 'nextWallpaperBtn') {
+        btn.addEventListener('click', (e) => {
+          this.setWallpaper(parseInt(e.target.dataset.wallpaper));
         });
+      }
+    });
+
+    // Next wallpaper button
+    const nextBtn = document.getElementById('nextWallpaperBtn');
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => {
+        this.nextWallpaper();
+      });
     }
+  }
+
+  setTheme(theme) {
+    this.currentTheme = theme;
+    localStorage.setItem(this.storageKey, theme);
+    this.applyTheme();
+
+    // Update active button
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.theme === theme);
+    });
+
+    notify({
+      type: 'success',
+      title: 'Theme Changed',
+      message: `Switched to ${theme} theme.`
+    });
+  }
+
+  applyTheme() {
+    document.documentElement.className = this.currentTheme + '-theme';
+  }
+
+  setWallpaper(index) {
+    this.currentWallpaper = index;
+    localStorage.setItem(this.wallpaperKey, index.toString());
+    this.applyWallpaper();
+
+    notify({
+      type: 'info',
+      title: 'Wallpaper Changed',
+      message: 'Background wallpaper updated.'
+    });
+  }
+
+  nextWallpaper() {
+    const nextIndex = (this.currentWallpaper + 1) % SAMPLE_WALLPAPERS.length;
+    this.setWallpaper(nextIndex);
+  }
+
+  applyWallpaper() {
+    const bg = document.querySelector('.anime-bg');
+    const wallpaper = SAMPLE_WALLPAPERS[this.currentWallpaper];
+
+    if (wallpaper.startsWith('linear-gradient')) {
+      bg.style.backgroundImage = wallpaper;
+    } else {
+      bg.style.backgroundImage = `url(${wallpaper})`;
+    }
+  }
+}
+
+// ===============================
+// WEATHER WIDGET
+// ===============================
+
+class WeatherWidget {
+  constructor() {
+    this.storageKey = 'weatherLocation';
+    this.cacheKey = 'weatherCache';
+    this.cacheExpiry = 15 * 60 * 1000; // 15 minutes
+    this.init();
+  }
+
+  init() {
+    this.setupEventListeners();
+    this.loadWeather();
+  }
+
+  setupEventListeners() {
+    const refreshBtn = document.getElementById('refreshWeather');
+    const locationBtn = document.getElementById('setLocationBtn');
+    const modal = document.getElementById('weatherLocationModal');
+    const closeBtn = document.getElementById('closeWeatherLocationModal');
+    const cancelBtn = document.getElementById('cancelWeatherLocation');
+    const form = document.getElementById('weatherLocationForm');
+
+    if (refreshBtn) refreshBtn.addEventListener('click', () => this.loadWeather(true));
+    if (locationBtn) locationBtn.addEventListener('click', () => this.showLocationModal());
+    if (closeBtn) closeBtn.addEventListener('click', () => this.hideLocationModal());
+    if (cancelBtn) cancelBtn.addEventListener('click', () => this.hideLocationModal());
+    if (form) form.addEventListener('submit', (e) => this.saveLocation(e));
+
+    if (modal) modal.addEventListener('click', (e) => {
+      if (e.target === modal) this.hideLocationModal();
+    });
+  }
+
+  showLocationModal() {
+    const modal = document.getElementById('weatherLocationModal');
+    const cityInput = document.getElementById('weatherCity');
+    const location = localStorage.getItem(this.storageKey);
+
+    if (cityInput) cityInput.value = location || '';
+    if (modal) modal.classList.remove('hidden');
+  }
+
+  hideLocationModal() {
+    const modal = document.getElementById('weatherLocationModal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  saveLocation(e) {
+    e.preventDefault();
+
+    const cityInput = document.getElementById('weatherCity');
+    const city = cityInput.value.trim();
+
+    if (city) {
+      localStorage.setItem(this.storageKey, city);
+      this.hideLocationModal();
+      this.loadWeather(true);
+
+      notify({
+        type: 'success',
+        title: 'Location Saved',
+        message: `Weather location set to ${city}.`
+      });
+    }
+  }
+
+  async loadWeather(forceRefresh = false) {
+    const location = localStorage.getItem(this.storageKey);
+
+    if (!location) {
+      this.showLocationModal();
+      return;
+    }
+
+    // Check cache
+    const cached = this.getCachedWeather();
+    if (!forceRefresh && cached && Date.now() - cached.timestamp < this.cacheExpiry) {
+      this.displayWeather(cached.data);
+      return;
+    }
+
+    this.showLoading();
+
+    try {
+      if (OPENWEATHER_API_KEY === 'YOUR_OPENWEATHER_API_KEY') {
+        // Show mock data if no API key
+        this.displayMockWeather(location);
+        return;
+      }
+
+      const response = await fetch(
+        `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(location)}&units=metric&appid=${OPENWEATHER_API_KEY}`
+      );
+
+      if (!response.ok) throw new Error('Weather data not available');
+
+      const data = await response.json();
+      this.cacheWeather(data);
+      this.displayWeather(data);
+
+    } catch (error) {
+      console.error('Error fetching weather:', error);
+      this.displayMockWeather(location);
+
+      notify({
+        type: 'error',
+        title: 'Weather Error',
+        message: 'Failed to fetch weather data. Showing mock data.'
+      });
+    }
+  }
+
+  displayWeather(data) {
+    const locationEl = document.getElementById('weatherLocation');
+    const tempEl = document.getElementById('weatherTemp');
+    const descEl = document.getElementById('weatherDescription');
+    const forecastEl = document.getElementById('weatherForecast');
+    const iconEl = document.getElementById('weatherIcon');
+
+    if (locationEl) locationEl.textContent = data.name;
+    if (tempEl) tempEl.textContent = `${Math.round(data.main.temp)}°C`;
+    if (descEl) descEl.textContent = data.weather[0].description;
+    if (forecastEl) forecastEl.textContent = `H: ${Math.round(data.main.temp_max)}° L: ${Math.round(data.main.temp_min)}°`;
+    if (iconEl) iconEl.className = `fas fa-${this.getWeatherIcon(data.weather[0].main)}`;
+
+    this.hideLoading();
+  }
+
+  displayMockWeather(location) {
+    const mockData = {
+      name: location,
+      main: {
+        temp: 22,
+        temp_min: 18,
+        temp_max: 26
+      },
+      weather: [{ description: 'Partly cloudy', main: 'Clouds' }]
+    };
+
+    this.displayWeather(mockData);
+
+    notify({
+      type: 'info',
+      title: 'Mock Weather Data',
+      message: 'Using mock data. Add OpenWeather API key for live data.'
+    });
+  }
+
+  getWeatherIcon(condition) {
+    const icons = {
+      Clear: 'sun',
+      Clouds: 'cloud',
+      Rain: 'cloud-rain',
+      Drizzle: 'cloud-drizzle',
+      Thunderstorm: 'bolt',
+      Snow: 'snowflake',
+      Mist: 'smog',
+      Fog: 'smog'
+    };
+    return icons[condition] || 'sun';
+  }
+
+  showLoading() {
+    const widget = document.getElementById('weatherCard');
+    if (widget) widget.classList.add('weather-loading');
+  }
+
+  hideLoading() {
+    const widget = document.getElementById('weatherCard');
+    if (widget) widget.classList.remove('weather-loading');
+  }
+
+  getCachedWeather() {
+    const cached = localStorage.getItem(this.cacheKey);
+    return cached ? JSON.parse(cached) : null;
+  }
+
+  cacheWeather(data) {
+    const cache = {
+      data,
+      timestamp: Date.now()
+    };
+    localStorage.setItem(this.cacheKey, JSON.stringify(cache));
+  }
+}
+
+// ===============================
+// MINI ANALYTICS
+// ===============================
+
+class MiniAnalytics {
+  constructor() {
+    this.storageKey = 'analyticsData';
+    this.chart = null;
+    this.init();
+  }
+
+  init() {
+    this.setupEventListeners();
+    this.loadData();
+    this.renderChart();
+  }
+
+  setupEventListeners() {
+    const addDataBtn = document.getElementById('addSampleData');
+    if (addDataBtn) {
+      addDataBtn.addEventListener('click', () => this.addSampleData());
+    }
+  }
+
+  loadData() {
+    let data = JSON.parse(localStorage.getItem(this.storageKey));
+
+    if (!data) {
+      // Initialize with sample data
+      data = {
+        anime: [3, 5, 2, 4, 6, 3, 4],
+        manga: [2, 3, 1, 2, 4, 2, 3],
+        projects: [1, 2, 1, 3, 2, 1, 2]
+      };
+      localStorage.setItem(this.storageKey, JSON.stringify(data));
+    }
+
+    this.updateStats(data);
+    return data;
+  }
+
+  updateStats(data) {
+    const animeCount = data.anime.reduce((a, b) => a + b, 0);
+    const mangaCount = data.manga.reduce((a, b) => a + b, 0);
+
+    const animeEl = document.getElementById('animeCount');
+    const mangaEl = document.getElementById('mangaCount');
+
+    if (animeEl) animeEl.textContent = animeCount;
+    if (mangaEl) mangaEl.textContent = mangaCount;
+  }
+
+  renderChart() {
+    const ctx = document.getElementById('analyticsChart');
+    if (!ctx) return;
+
+    const data = this.loadData();
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    if (this.chart) {
+      this.chart.destroy();
+    }
+
+    this.chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: days,
+        datasets: [
+          {
+            label: 'Anime',
+            data: data.anime,
+            backgroundColor: 'rgba(59, 130, 246, 0.7)',
+            borderColor: 'rgba(59, 130, 246, 1)',
+            borderWidth: 1
+          },
+          {
+            label: 'Manga',
+            data: data.manga,
+            backgroundColor: 'rgba(16, 185, 129, 0.7)',
+            borderColor: 'rgba(16, 185, 129, 1)',
+            borderWidth: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              color: 'var(--text)'
+            },
+            grid: {
+              color: 'rgba(255, 255, 255, 0.1)'
+            }
+          },
+          x: {
+            ticks: {
+              color: 'var(--text)'
+            },
+            grid: {
+              color: 'rgba(255, 255, 255, 0.1)'
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            labels: {
+              color: 'var(--text)'
+            }
+          }
+        }
+      }
+    });
+  }
+
+  addSampleData() {
+    const data = this.loadData();
+
+    // Add random data points
+    data.anime = data.anime.map(() => Math.floor(Math.random() * 7) + 1);
+    data.manga = data.manga.map(() => Math.floor(Math.random() * 5) + 1);
+
+    localStorage.setItem(this.storageKey, JSON.stringify(data));
+    this.updateStats(data);
+    this.renderChart();
+
+    notify({
+      type: 'success',
+      title: 'Data Updated',
+      message: 'Added new sample data to analytics.'
+    });
+  }
+
+  updateAnalytics(newData) {
+    localStorage.setItem(this.storageKey, JSON.stringify(newData));
+    this.updateStats(newData);
+    this.renderChart();
+  }
+}
+
+// ===============================
+// ANIME DASHBOARD API FETCHER
+// (Trending + Upcoming from AniList)
+// ===============================
+
+// --- Fetch Trending Anime ---
+async function loadTrendingAnime() {
+  const container = document.getElementById("trendingAnimeContainer");
+  container.innerHTML = `
+    <div class="text-center py-2">
+      <i class="fas fa-spinner fa-spin text-lg mb-1"></i>
+      <p class="text-sm">Loading trending anime...</p>
+    </div>
+  `;
+
+  try {
+    const query = `
+      query {
+        Page(page: 1, perPage: 10) {
+          media(type: ANIME, sort: TRENDING_DESC) {
+            id
+            title {
+              english
+              romaji
+            }
+            coverImage {
+              medium
+            }
+            averageScore
+          }
+        }
+      }
+    `;
+
+    const response = await fetch("https://graphql.anilist.co", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ query }),
+    });
+
+    if (!response.ok) throw new Error("Failed to fetch trending anime");
+
+    const data = await response.json();
+    const animeList = data.data.Page.media;
+
+    container.innerHTML = animeList
+      .map(
+        (anime, index) => `
+        <div class="trending-anime-item flex items-center gap-3 bg-gray-800 rounded-lg p-2 hover:bg-gray-700 transition">
+          <div class="text-gray-400 font-bold w-5">${index + 1}</div>
+          <img src="${anime.coverImage.medium}" alt="${anime.title.english || anime.title.romaji}" class="w-10 h-14 rounded object-cover" />
+          <div class="flex-1">
+            <div class="text-sm font-semibold text-white">
+              ${anime.title.english || anime.title.romaji}
+            </div>
+          </div>
+        </div>
+      `
+      )
+      .join("");
+  } catch (error) {
+    console.error("Error loading trending anime:", error);
+    container.innerHTML = `
+      <div class="text-center py-2 text-red-400">
+        <i class="fas fa-exclamation-triangle mb-1"></i>
+        <p class="text-sm">Failed to load trending anime.</p>
+      </div>
+    `;
+  }
+}
+
+// --- Fetch Upcoming Anime ---
+async function loadUpcomingAnime() {
+  const container = document.getElementById("Upcominganimecontainer");
+  container.innerHTML = `
+    <div class="text-center py-4">
+      <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+      <p>Loading upcoming anime...</p>
+    </div>
+  `;
+
+  try {
+    const query = `
+      query {
+        Page(page: 1, perPage: 10) {
+          media(type: ANIME, sort: POPULARITY_DESC, status_in: [NOT_YET_RELEASED]) {
+            id
+            title {
+              english
+              romaji
+            }
+            coverImage {
+              medium
+            }
+            season
+            seasonYear
+          }
+        }
+      }
+    `;
+
+    const response = await fetch("https://graphql.anilist.co", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ query }),
+    });
+
+    if (!response.ok) throw new Error("Failed to fetch upcoming anime");
+
+    const data = await response.json();
+    const animeList = data.data.Page.media;
+
+    container.innerHTML = animeList
+      .map(
+        (anime) => `
+        <div class="anime-update-item flex items-center gap-3 bg-gray-800 rounded-lg p-2 hover:bg-gray-700 transition">
+          <img src="${anime.coverImage.medium}" alt="${anime.title.english || anime.title.romaji}" class="w-10 h-14 rounded object-cover" />
+          <div>
+            <div class="text-sm font-semibold text-white">${anime.title.english || anime.title.romaji}</div>
+            <div class="text-xs text-gray-400">${anime.season || "TBA"} ${anime.seasonYear || ""}</div>
+          </div>
+        </div>
+      `
+      )
+      .join("");
+  } catch (error) {
+    console.error("Error loading upcoming anime:", error);
+    container.innerHTML = `
+      <div class="text-center py-4 text-red-400">
+        <i class="fas fa-exclamation-triangle mb-2"></i>
+        <p>Failed to load upcoming anime.</p>
+      </div>
+    `;
+  }
+}
+
+// --- Initialize on Page Load ---
+document.addEventListener("DOMContentLoaded", () => {
+  loadTrendingAnime();
+  loadUpcomingAnime();
 });
 
-// Initialize Activity System
-function initializeActivitySystem() {
-    activityManager.updateHomeActivityDisplay();
-    
-    const modal = document.getElementById('activityModal');
-    const openButtons = ['addActivityHome'];
-    const closeButton = document.getElementById('closeActivityModal');
-    const cancelButton = document.getElementById('cancelActivity');
-    const form = document.getElementById('activityForm');
-    
-    openButtons.forEach(buttonId => {
-        const button = document.getElementById(buttonId);
-        if (button) {
-            button.addEventListener('click', () => {
-                modal.classList.remove('hidden');
-            });
-        }
+
+// --- Initialize on Page Load ---
+document.addEventListener("DOMContentLoaded", () => {
+  loadTrendingAnime();
+  loadUpcomingAnime();
+});
+
+// --- Optional: Manual Refresh Buttons (if you have them) ---
+document.getElementById("refreshAnime")?.addEventListener("click", loadUpcomingAnime);
+document.getElementById("refreshTrendingAnime")?.addEventListener("click", loadTrendingAnime);
+
+// ===============================
+// CALENDAR WIDGET
+// ===============================
+
+class CalendarWidget {
+  constructor() {
+    this.storageKey = 'calendarEvents';
+    this.currentDate = new Date();
+    this.init();
+  }
+
+  init() {
+    this.setupEventListeners();
+    this.renderCalendar();
+    this.renderEvents();
+  }
+
+  setupEventListeners() {
+    const prevBtn = document.getElementById('prevMonth');
+    const nextBtn = document.getElementById('nextMonth');
+    const addBtn = document.getElementById('addEventBtn');
+    const modal = document.getElementById('calendarEventModal');
+    const closeBtn = document.getElementById('closeCalendarEventModal');
+    const cancelBtn = document.getElementById('cancelCalendarEvent');
+    const deleteBtn = document.getElementById('deleteCalendarEvent');
+    const form = document.getElementById('calendarEventForm');
+
+    if (prevBtn) prevBtn.addEventListener('click', () => this.previousMonth());
+    if (nextBtn) nextBtn.addEventListener('click', () => this.nextMonth());
+    if (addBtn) addBtn.addEventListener('click', () => this.showEventModal());
+    if (closeBtn) closeBtn.addEventListener('click', () => this.hideEventModal());
+    if (cancelBtn) cancelBtn.addEventListener('click', () => this.hideEventModal());
+    if (deleteBtn) deleteBtn.addEventListener('click', () => this.deleteEvent());
+    if (form) form.addEventListener('submit', (e) => this.saveEvent(e));
+
+    if (modal) modal.addEventListener('click', (e) => {
+      if (e.target === modal) this.hideEventModal();
     });
-    
-    [closeButton, cancelButton].forEach(button => {
-        if (button) {
-            button.addEventListener('click', () => {
-                modal.classList.add('hidden');
-            });
-        }
+  }
+
+  renderCalendar() {
+    const monthEl = document.getElementById('calendarMonth');
+    const gridEl = document.getElementById('calendarGrid');
+
+    if (!monthEl || !gridEl) return;
+
+    // Update month title
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+    monthEl.textContent = `${monthNames[this.currentDate.getMonth()]} ${this.currentDate.getFullYear()}`;
+
+    // Clear grid
+    gridEl.innerHTML = '';
+
+    // Add day headers
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    dayNames.forEach(day => {
+      const dayEl = document.createElement('div');
+      dayEl.className = 'calendar-day empty font-semibold';
+      dayEl.textContent = day;
+      gridEl.appendChild(dayEl);
     });
-    
-    if (form) {
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            
-            const type = document.getElementById('activityType').value;
-            let content = document.getElementById('activityContent').value.trim();
-            
-            if (!content) {
-                alert('Please enter activity description');
-                return;
-            }
-            
-            content = content.replace(/\*(.*?)\*/g, '<span class="font-medium">$1</span>');
-            
-            const typeConfig = {
-                anime: { icon: 'fas fa-tv', color: 'blue' },
-                manga: { icon: 'fas fa-book', color: 'purple' },
-                project: { icon: 'fas fa-check', color: 'green' },
-                upload: { icon: 'fas fa-upload', color: 'yellow' },
-                other: { icon: 'fas fa-star', color: 'gray' }
-            };
-            
-            const config = typeConfig[type] || typeConfig.other;
-            
-            activityManager.addActivity({
-                type: type,
-                icon: config.icon,
-                iconColor: config.color,
-                content: content,
-                editable: true
-            });
-            
-            form.reset();
-            modal.classList.add('hidden');
-        });
+
+    // Get first day of month and days in month
+    const firstDay = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth(), 1);
+    const lastDay = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth() + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDay = firstDay.getDay();
+
+    // Add empty cells for days before the first day of the month
+    for (let i = 0; i < startingDay; i++) {
+      const emptyEl = document.createElement('div');
+      emptyEl.className = 'calendar-day empty';
+      gridEl.appendChild(emptyEl);
     }
-    
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            modal.classList.add('hidden');
-        }
-    });
-}
 
-// Initialize Stats System
-function initializeStatsSystem() {
-    statsManager.updateHomeStatsDisplay();
-    
-    const editButtons = ['editStatsHome'];
-    
-    editButtons.forEach(buttonId => {
-        const button = document.getElementById(buttonId);
-        if (button) {
-            button.addEventListener('click', () => {
-                const statElements = document.querySelectorAll('.stat-value[contenteditable="true"]');
-                statElements.forEach(element => {
-                    element.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-                    element.style.outline = '2px solid var(--accent)';
-                    element.focus();
-                });
-            });
-        }
-    });
-}
+    // Add days of the month
+    const today = new Date();
+    const events = this.getEvents();
 
-// Function to load saved content from localStorage
-function loadSavedContent() {
-    const editableElements = document.querySelectorAll('.editable');
-    
-    editableElements.forEach(element => {
-        const elementId = element.getAttribute('data-id');
-        const savedContent = localStorage.getItem(elementId);
-        
-        if (savedContent) {
-            element.textContent = savedContent;
-        }
-    });
-}
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dayEl = document.createElement('div');
+      dayEl.className = 'calendar-day';
+      dayEl.textContent = day;
+      dayEl.dataset.date = `${this.currentDate.getFullYear()}-${String(this.currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-// Function to show save indicator
-function showSaveIndicator() {
-    const saveIndicator = document.getElementById('saveIndicator');
-    saveIndicator.classList.add('show');
-    
-    setTimeout(() => {
-        saveIndicator.classList.remove('show');
-    }, 2000);
-}
+      // Check if today
+      if (this.currentDate.getMonth() === today.getMonth() &&
+        this.currentDate.getFullYear() === today.getFullYear() &&
+        day === today.getDate()) {
+        dayEl.classList.add('today');
+      }
 
-// Function to initialize search
-function initializeSearch() {
-    const searchInput = document.getElementById('search-input');
-    
-    if (searchInput) {
-        searchInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                const query = this.value.trim();
-                if (query) {
-                    // Check if it's a URL
-                    if (query.includes('.') || query.startsWith('http')) {
-                        window.open(query, '_blank');
-                    } else {
-                        // Perform a search
-                        window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank');
-                    }
-                }
-            }
-        });
+      // Check if has events
+      const dayEvents = events.filter(event => event.date === dayEl.dataset.date);
+      if (dayEvents.length > 0) {
+        dayEl.classList.add('has-event');
+      }
+
+      dayEl.addEventListener('click', () => this.showDayEvents(dayEl.dataset.date));
+      gridEl.appendChild(dayEl);
     }
+  }
+
+  renderEvents() {
+    const today = new Date().toISOString().split('T')[0];
+    const events = this.getEvents().filter(event => event.date === today);
+    const container = document.getElementById('todayEvents');
+
+    if (!container) return;
+
+    if (events.length === 0) {
+      container.innerHTML = '<div class="text-gray-500 text-sm">No events for today</div>';
+      return;
+    }
+
+    container.innerHTML = events.map(event => `
+                    <div class="calendar-event">
+                        <div class="calendar-event-title">${event.title}</div>
+                        ${event.time ? `<div class="calendar-event-time">${event.time}</div>` : ''}
+                    </div>
+                `).join('');
+  }
+
+  showDayEvents(date) {
+    const events = this.getEvents().filter(event => event.date === date);
+    if (events.length > 0) {
+      const eventList = events.map(event =>
+        `${event.time ? event.time + ' - ' : ''}${event.title}`
+      ).join('\n');
+
+      notify({
+        type: 'info',
+        title: `Events on ${new Date(date).toLocaleDateString()}`,
+        message: eventList
+      });
+    }
+  }
+
+  previousMonth() {
+    this.currentDate.setMonth(this.currentDate.getMonth() - 1);
+    this.renderCalendar();
+  }
+
+  nextMonth() {
+    this.currentDate.setMonth(this.currentDate.getMonth() + 1);
+    this.renderCalendar();
+  }
+
+  showEventModal(event = null) {
+    const modal = document.getElementById('calendarEventModal');
+    const titleEl = document.getElementById('calendarEventModalTitle');
+    const submitBtn = document.getElementById('calendarEventSubmit');
+    const deleteBtn = document.getElementById('deleteCalendarEvent');
+    const form = document.getElementById('calendarEventForm');
+
+    if (!modal) return;
+
+    // Reset form
+    form.reset();
+    document.getElementById('calendarEventId').value = '';
+
+    if (event) {
+      // Edit existing event
+      titleEl.textContent = 'Edit Event';
+      submitBtn.textContent = 'Update Event';
+      deleteBtn.classList.remove('hidden');
+
+      document.getElementById('calendarEventId').value = event.id;
+      document.getElementById('calendarEventTitle').value = event.title;
+      document.getElementById('calendarEventDate').value = event.date;
+      document.getElementById('calendarEventTime').value = event.time || '';
+      document.getElementById('calendarEventCategory').value = event.category || 'personal';
+    } else {
+      // Add new event
+      titleEl.textContent = 'Add Event';
+      submitBtn.textContent = 'Add Event';
+      deleteBtn.classList.add('hidden');
+      document.getElementById('calendarEventDate').value = new Date().toISOString().split('T')[0];
+    }
+
+    modal.classList.remove('hidden');
+  }
+
+  hideEventModal() {
+    const modal = document.getElementById('calendarEventModal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  saveEvent(e) {
+    e.preventDefault();
+
+    const id = document.getElementById('calendarEventId').value || Date.now().toString();
+    const title = document.getElementById('calendarEventTitle').value;
+    const date = document.getElementById('calendarEventDate').value;
+    const time = document.getElementById('calendarEventTime').value;
+    const category = document.getElementById('calendarEventCategory').value;
+
+    if (!title || !date) return;
+
+    const events = this.getEvents();
+    const existingIndex = events.findIndex(event => event.id === id);
+    const event = { id, title, date, time, category };
+
+    if (existingIndex >= 0) {
+      events[existingIndex] = event;
+    } else {
+      events.push(event);
+    }
+
+    localStorage.setItem(this.storageKey, JSON.stringify(events));
+    this.renderCalendar();
+    this.renderEvents();
+    this.hideEventModal();
+
+    notify({
+      type: 'success',
+      title: existingIndex >= 0 ? 'Event Updated' : 'Event Added',
+      message: `"${title}" has been ${existingIndex >= 0 ? 'updated' : 'added'} to your calendar.`
+    });
+  }
+
+  deleteEvent() {
+    const id = document.getElementById('calendarEventId').value;
+    const title = document.getElementById('calendarEventTitle').value;
+
+    if (!id) return;
+
+    const events = this.getEvents().filter(event => event.id !== id);
+    localStorage.setItem(this.storageKey, JSON.stringify(events));
+    this.renderCalendar();
+    this.renderEvents();
+    this.hideEventModal();
+
+    notify({
+      type: 'success',
+      title: 'Event Deleted',
+      message: `"${title}" has been removed from your calendar.`
+    });
+  }
+
+  getEvents() {
+    return JSON.parse(localStorage.getItem(this.storageKey) || '[]');
+  }
+
+  getUpcomingEvents(limit = 5) {
+    const today = new Date().toISOString().split('T')[0];
+    return this.getEvents()
+      .filter(event => event.date >= today)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, limit);
+  }
 }
 
-// Weather functionality
-function initializeWeather() {
-    const refreshBtn = document.getElementById('refreshWeather');
-    
-    if (refreshBtn) {
-        refreshBtn.addEventListener('click', getWeatherData);
-    }
-    
-    // Get weather data on page load
-    getWeatherData();
-    
-    // Refresh weather every 30 minutes
-    setInterval(getWeatherData, 30 * 60 * 1000);
-}
+// ===============================
+// QUOTE WIDGET
+// ===============================
 
-async function getWeatherData() {
-    const weatherTemp = document.getElementById('weatherTemp');
-    const weatherLocation = document.getElementById('weatherLocation');
-    const weatherDescription = document.getElementById('weatherDescription');
-    const weatherIcon = document.getElementById('weatherIcon');
-    const feelsLike = document.getElementById('feelsLike');
-    const humidity = document.getElementById('humidity');
-    const windSpeed = document.getElementById('windSpeed');
-    const visibility = document.getElementById('visibility');
-    const refreshBtn = document.getElementById('refreshWeather');
-    
-    // Show loading state
-    if (refreshBtn) {
-        refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-        refreshBtn.disabled = true;
-    }
-    
-    weatherLocation.textContent = 'Detecting location...';
-    weatherTemp.textContent = '--°C';
-    weatherDescription.textContent = 'Loading...';
-    
+class QuoteWidget {
+  constructor() {
+    this.storageKey = 'bookmarkedQuotes';
+    this.init();
+  }
+
+  init() {
+    this.setupEventListeners();
+    this.loadQuote();
+  }
+
+  setupEventListeners() {
+    const refreshBtn = document.getElementById('refreshQuote');
+    const bookmarkBtn = document.getElementById('bookmarkQuote');
+
+    if (refreshBtn) refreshBtn.addEventListener('click', () => this.loadQuote());
+    if (bookmarkBtn) bookmarkBtn.addEventListener('click', () => this.bookmarkQuote());
+  }
+
+  async loadQuote() {
     try {
-        // Get user's location
-        const position = await getCurrentPosition();
-        const { latitude, longitude } = position.coords;
-        
-        // Get weather data from OpenWeatherMap API
-        const weatherData = await fetchWeatherData(latitude, longitude);
-        
-        // Update UI with weather data
-        updateWeatherUI(weatherData);
-        
-    } catch (error) {
-        console.error('Error getting weather data:', error);
-        weatherLocation.textContent = 'Unable to get location';
-        weatherDescription.textContent = 'Please allow location access';
-        weatherTemp.textContent = '--°C';
-        
-        // Try to use IP-based location as fallback
-        try {
-            await getWeatherByIP();
-        } catch (ipError) {
-            console.error('IP-based weather also failed:', ipError);
-        }
-    } finally {
-        // Reset refresh button
-        if (refreshBtn) {
-            refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
-            refreshBtn.disabled = false;
-        }
-    }
-}
+      const response = await fetch('https://api.quotable.io/random');
+      const data = await response.json();
 
-function getCurrentPosition() {
-    return new Promise((resolve, reject) => {
-        if (!navigator.geolocation) {
-            reject(new Error('Geolocation is not supported'));
-            return;
-        }
-        
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 60 * 60 * 1000 // 1 hour
-        });
+      this.displayQuote(data.content, data.author);
+    } catch (error) {
+      console.error('Error fetching quote:', error);
+      // Fallback to local quotes
+      const randomQuote = SAMPLE_QUOTES[Math.floor(Math.random() * SAMPLE_QUOTES.length)];
+      this.displayQuote(randomQuote.text, randomQuote.author);
+
+      notify({
+        type: 'warning',
+        title: 'Offline Mode',
+        message: 'Using cached quotes. Check your connection for fresh quotes.'
+      });
+    }
+  }
+
+  displayQuote(text, author) {
+    const textEl = document.getElementById('quoteText');
+    const authorEl = document.getElementById('quoteAuthor');
+
+    if (textEl) textEl.textContent = text;
+    if (authorEl) authorEl.textContent = `- ${author}`;
+
+    this.currentQuote = { text, author };
+  }
+
+  bookmarkQuote() {
+    if (!this.currentQuote) return;
+
+    const bookmarks = this.getBookmarks();
+    const alreadyBookmarked = bookmarks.some(
+      quote => quote.text === this.currentQuote.text && quote.author === this.currentQuote.author
+    );
+
+    if (alreadyBookmarked) {
+      notify({
+        type: 'info',
+        title: 'Already Bookmarked',
+        message: 'This quote is already in your bookmarks.'
+      });
+      return;
+    }
+
+    bookmarks.push(this.currentQuote);
+    localStorage.setItem(this.storageKey, JSON.stringify(bookmarks));
+
+    notify({
+      type: 'success',
+      title: 'Quote Bookmarked',
+      message: 'Quote added to your bookmarks.'
     });
+  }
+
+  getBookmarks() {
+    return JSON.parse(localStorage.getItem(this.storageKey) || '[]');
+  }
 }
 
-async function fetchWeatherData(lat, lon) {
-    const API_KEY = 'ca1f3d0d3aec32f0725acb83b73dd8ca';
-    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
-    
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-        throw new Error('Weather API request failed');
-    }
-    
-    return await response.json();
-}
+// ===============================
+// SOCIAL WIDGET
+// ===============================
 
-// Fallback: Get weather by IP location
-async function getWeatherByIP() {
-    const API_KEY = 'ca1f3d0d3aec32f0725acb83b73dd8ca';
-    
+class SocialWidget {
+  constructor() {
+    this.init();
+  }
+
+  init() {
+    this.setupEventListeners();
+    this.loadYouTubeStats();
+    this.loadGitHubStats();
+  }
+
+  setupEventListeners() {
+    // Social connection buttons can be added here
+  }
+
+  async loadYouTubeStats() {
+    const CHANNEL_ID = "UCDwG7iHjjI0W92w9Ipl6r1w";
+
     try {
-        // First get location by IP
-        const ipResponse = await fetch('https://ipapi.co/json/');
-        const ipData = await ipResponse.json();
-        
-        // Then get weather for that location
-        const weatherResponse = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${ipData.city}&appid=${API_KEY}&units=metric`);
-        const weatherData = await weatherResponse.json();
-        
-        updateWeatherUI(weatherData);
+      const res = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&id=${CHANNEL_ID}&key=${YOUTUBE_API_KEY}`);
+      const data = await res.json();
+
+      if (!data.items || !data.items.length) throw new Error("Channel not found");
+
+      const { statistics } = data.items[0];
+
+      // Format numbers
+      const formatNumber = (n) => Intl.NumberFormat('en-US', { notation: "compact" }).format(n);
+
+      // Update UI
+      document.getElementById("yt-subs").textContent = formatNumber(statistics.subscriberCount);
+      document.getElementById("yt-views").textContent = formatNumber(statistics.viewCount);
+      document.getElementById("yt-videos").textContent = statistics.videoCount;
+    } catch (err) {
+      console.error("Error fetching YouTube stats:", err);
+      // Show mock data
+      document.getElementById("yt-subs").textContent = "1.2K";
+      document.getElementById("yt-views").textContent = "45.6K";
+      document.getElementById("yt-videos").textContent = "24";
+    }
+  }
+
+  async loadGitHubStats() {
+    try {
+      const response = await fetch(`https://api.github.com/users/${GITHUB_USERNAME}`);
+      const data = await response.json();
+
+      document.getElementById("gh-repos").textContent = data.public_repos;
+      document.getElementById("gh-followers").textContent = data.followers;
+
+      // Get stars count (this requires additional API calls)
+      const reposResponse = await fetch(`https://api.github.com/users/${GITHUB_USERNAME}/repos`);
+      const repos = await reposResponse.json();
+      const stars = repos.reduce((total, repo) => total + repo.stargazers_count, 0);
+      document.getElementById("gh-stars").textContent = stars;
+
     } catch (error) {
-        throw new Error('IP-based weather failed');
+      console.error("Error fetching GitHub stats:", error);
+      // Show mock data
+      document.getElementById("gh-repos").textContent = "12";
+      document.getElementById("gh-followers").textContent = "45";
+      document.getElementById("gh-stars").textContent = "89";
+
+      notify({
+        type: 'warning',
+        title: 'GitHub Stats',
+        message: 'Using mock data. Check rate limits or connection.'
+      });
     }
+  }
 }
 
-function updateWeatherUI(data) {
-    const weatherTemp = document.getElementById('weatherTemp');
-    const weatherLocation = document.getElementById('weatherLocation');
-    const weatherDescription = document.getElementById('weatherDescription');
-    const weatherIcon = document.getElementById('weatherIcon');
-    const feelsLike = document.getElementById('feelsLike');
-    const humidity = document.getElementById('humidity');
-    const windSpeed = document.getElementById('windSpeed');
-    const visibility = document.getElementById('visibility');
-    
-    // Extract data from API response
-    const temp = Math.round(data.main.temp);
-    const feelsLikeTemp = Math.round(data.main.feels_like);
-    const city = data.name;
-    const country = data.sys.country;
-    const description = data.weather[0].description;
-    const humidityValue = data.main.humidity;
-    const windSpeedValue = Math.round(data.wind.speed * 3.6); // Convert m/s to km/h
-    const visibilityKm = data.visibility ? (data.visibility / 1000).toFixed(1) : 'N/A';
-    const pressure = data.main.pressure;
-    const iconCode = data.weather[0].icon;
-    
-    // Update UI elements
-    weatherTemp.textContent = `${temp}°C`;
-    weatherLocation.textContent = `${city}, ${country}`;
-    weatherDescription.textContent = capitalizeFirstLetter(description);
-    feelsLike.textContent = `${feelsLikeTemp}°C`;
-    humidity.textContent = `${humidityValue}%`;
-    windSpeed.textContent = `${windSpeedValue} km/h`;
-    visibility.textContent = `${visibilityKm} km`;
-    
-    // Update weather icon
-    updateWeatherIcon(weatherIcon, iconCode);
-    
-    // Save to localStorage for offline use
-    const weatherData = {
-        temp,
-        feelsLikeTemp,
-        city,
-        country,
-        description,
-        humidity: humidityValue,
-        windSpeed: windSpeedValue,
-        visibilityKm,
-        pressure,
-        iconCode,
-        timestamp: Date.now()
-    };
-    localStorage.setItem('weatherData', JSON.stringify(weatherData));
+// ===============================
+// MUSIC WIDGET
+// ===============================
+
+class MusicWidget {
+  constructor() {
+    this.storageKey = 'musicSource';
+    this.isPlaying = false;
+    this.currentTrack = 0;
+    this.tracks = [
+      { title: 'Sample Track 1', artist: 'Unknown Artist', src: '' },
+      { title: 'Sample Track 2', artist: 'Unknown Artist', src: '' },
+      { title: 'Sample Track 3', artist: 'Unknown Artist', src: '' }
+    ];
+    this.init();
+  }
+
+  init() {
+    this.setupEventListeners();
+    this.loadPreferences();
+  }
+
+  setupEventListeners() {
+    const playBtn = document.getElementById('musicPlay');
+    const prevBtn = document.getElementById('musicPrev');
+    const nextBtn = document.getElementById('musicNext');
+    const sourceSelect = document.getElementById('musicSource');
+
+    if (playBtn) playBtn.addEventListener('click', () => this.togglePlay());
+    if (prevBtn) prevBtn.addEventListener('click', () => this.previousTrack());
+    if (nextBtn) nextBtn.addEventListener('click', () => this.nextTrack());
+    if (sourceSelect) sourceSelect.addEventListener('change', (e) => this.changeSource(e.target.value));
+  }
+
+  loadPreferences() {
+    const source = localStorage.getItem(this.storageKey) || 'spotify';
+    this.changeSource(source);
+
+    const select = document.getElementById('musicSource');
+    if (select) select.value = source;
+  }
+
+  changeSource(source) {
+    localStorage.setItem(this.storageKey, source);
+
+    const spotifyEmbed = document.getElementById('spotifyEmbed');
+    const localPlayer = document.getElementById('localPlayer');
+
+    if (source === 'spotify') {
+      if (spotifyEmbed) spotifyEmbed.classList.remove('hidden');
+      if (localPlayer) localPlayer.classList.add('hidden');
+    } else {
+      if (spotifyEmbed) spotifyEmbed.classList.add('hidden');
+      if (localPlayer) localPlayer.classList.remove('hidden');
+    }
+  }
+
+  togglePlay() {
+    this.isPlaying = !this.isPlaying;
+    const playBtn = document.getElementById('musicPlay');
+
+    if (playBtn) {
+      playBtn.innerHTML = this.isPlaying ?
+        '<i class="fas fa-pause"></i>' :
+        '<i class="fas fa-play"></i>';
+    }
+
+    // Update track info
+    this.updateTrackInfo();
+  }
+
+  previousTrack() {
+    this.currentTrack = (this.currentTrack - 1 + this.tracks.length) % this.tracks.length;
+    this.updateTrackInfo();
+  }
+
+  nextTrack() {
+    this.currentTrack = (this.currentTrack + 1) % this.tracks.length;
+    this.updateTrackInfo();
+  }
+
+  updateTrackInfo() {
+    const track = this.tracks[this.currentTrack];
+    const titleEl = document.getElementById('musicTitle');
+    const artistEl = document.getElementById('musicArtist');
+
+    if (titleEl) titleEl.textContent = track.title;
+    if (artistEl) artistEl.textContent = track.artist;
+  }
 }
 
-function updateWeatherIcon(iconElement, iconCode) {
-    // Map OpenWeatherMap icon codes to Font Awesome icons
-    const iconMap = {
-        '01d': 'fas fa-sun text-yellow-500',
-        '01n': 'fas fa-moon text-blue-300',
-        '02d': 'fas fa-cloud-sun text-yellow-400',
-        '02n': 'fas fa-cloud-moon text-blue-300',
-        '03d': 'fas fa-cloud text-gray-400',
-        '03n': 'fas fa-cloud text-gray-400',
-        '04d': 'fas fa-cloud text-gray-500',
-        '04n': 'fas fa-cloud text-gray-500',
-        '09d': 'fas fa-cloud-rain text-blue-400',
-        '09n': 'fas fa-cloud-rain text-blue-400',
-        '10d': 'fas fa-cloud-sun-rain text-blue-400',
-        '10n': 'fas fa-cloud-moon-rain text-blue-400',
-        '11d': 'fas fa-bolt text-yellow-500',
-        '11n': 'fas fa-bolt text-yellow-500',
-        '13d': 'fas fa-snowflake text-blue-200',
-        '13n': 'fas fa-snowflake text-blue-200',
-        '50d': 'fas fa-smog text-gray-400',
-        '50n': 'fas fa-smog text-gray-400'
-    };
-    
-    const iconClass = iconMap[iconCode] || 'fas fa-question text-gray-400';
-    iconElement.innerHTML = `<i class="${iconClass}"></i>`;
-}
+// ===============================
+// QUICK TOOLS
+// ===============================
 
-function capitalizeFirstLetter(string) {
-    return string.charAt(0).toUpperCase() + string.slice(1);
-}
+class QuickTools {
+  constructor() {
+    this.notesKey = 'quickNotes';
+    this.filesKey = 'uploadedFiles';
+    this.pomodoroInterval = null;
+    this.pomodoroTime = 25 * 60;
+    this.isPomodoroRunning = false;
+    this.isWorkTime = true;
+    this.init();
+  }
 
-// Load cached weather data if available
-function loadCachedWeatherData() {
-    const cached = localStorage.getItem('weatherData');
-    if (cached) {
-        const weatherData = JSON.parse(cached);
-        const cacheAge = Date.now() - weatherData.timestamp;
-        const maxCacheAge = 30 * 60 * 1000; // 30 minutes
-        
-        if (cacheAge < maxCacheAge) {
-            updateWeatherUIFromCache(weatherData);
-            return true;
+  init() {
+    this.setupEventListeners();
+    this.loadNotes();
+    this.loadFiles();
+  }
+
+  setupEventListeners() {
+    // Tab switching
+    document.querySelectorAll('.tool-tab').forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        this.switchTab(e.target.dataset.tool);
+      });
+    });
+
+    // Notes
+    const notesArea = document.getElementById('quickNotes');
+    const exportBtn = document.getElementById('exportNotes');
+    const importBtn = document.getElementById('importNotes');
+
+    if (notesArea) notesArea.addEventListener('input', () => this.saveNotes());
+    if (exportBtn) exportBtn.addEventListener('click', () => this.exportNotes());
+    if (importBtn) importBtn.addEventListener('click', () => this.importNotes());
+
+    // Pomodoro
+    const startBtn = document.getElementById('pomodoroStart');
+    const pauseBtn = document.getElementById('pomodoroPause');
+    const resetBtn = document.getElementById('pomodoroReset');
+    const workInput = document.getElementById('pomodoroWork');
+    const breakInput = document.getElementById('pomodoroBreak');
+
+    if (startBtn) startBtn.addEventListener('click', () => this.startPomodoro());
+    if (pauseBtn) pauseBtn.addEventListener('click', () => this.pausePomodoro());
+    if (resetBtn) resetBtn.addEventListener('click', () => this.resetPomodoro());
+    if (workInput) workInput.addEventListener('change', () => this.updatePomodoroSettings());
+    if (breakInput) breakInput.addEventListener('change', () => this.updatePomodoroSettings());
+
+    // Files
+    const uploadBtn = document.getElementById('uploadFileBtn');
+    if (uploadBtn) uploadBtn.addEventListener('click', () => this.uploadFile());
+  }
+
+  switchTab(tool) {
+    // Update active tab
+    document.querySelectorAll('.tool-tab').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.tool === tool);
+    });
+
+    // Show active content
+    document.querySelectorAll('.tool-content').forEach(content => {
+      content.classList.toggle('active', content.id === `${tool}Tool`);
+    });
+  }
+
+  // Notes functionality
+  loadNotes() {
+    const notes = localStorage.getItem(this.notesKey);
+    const notesArea = document.getElementById('quickNotes');
+    if (notesArea && notes) {
+      notesArea.value = notes;
+    }
+  }
+
+  saveNotes() {
+    const notesArea = document.getElementById('quickNotes');
+    if (notesArea) {
+      localStorage.setItem(this.notesKey, notesArea.value);
+    }
+  }
+
+  exportNotes() {
+    const notesArea = document.getElementById('quickNotes');
+    if (!notesArea) return;
+
+    const blob = new Blob([notesArea.value], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'notes.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+
+    notify({
+      type: 'success',
+      title: 'Notes Exported',
+      message: 'Your notes have been downloaded.'
+    });
+  }
+
+  importNotes() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.txt';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const notesArea = document.getElementById('quickNotes');
+        if (notesArea) {
+          notesArea.value = e.target.result;
+          this.saveNotes();
+
+          notify({
+            type: 'success',
+            title: 'Notes Imported',
+            message: 'Your notes have been imported successfully.'
+          });
         }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }
+
+  // Pomodoro functionality
+  startPomodoro() {
+    if (this.isPomodoroRunning) return;
+
+    this.isPomodoroRunning = true;
+    this.pomodoroInterval = setInterval(() => {
+      this.pomodoroTime--;
+      this.updatePomodoroDisplay();
+
+      if (this.pomodoroTime <= 0) {
+        this.pomodoroComplete();
+      }
+    }, 1000);
+  }
+
+  pausePomodoro() {
+    this.isPomodoroRunning = false;
+    if (this.pomodoroInterval) {
+      clearInterval(this.pomodoroInterval);
     }
-    return false;
+  }
+
+  resetPomodoro() {
+    this.pausePomodoro();
+    this.isWorkTime = true;
+    const workInput = document.getElementById('pomodoroWork');
+    this.pomodoroTime = (workInput ? parseInt(workInput.value) : 25) * 60;
+    this.updatePomodoroDisplay();
+  }
+
+  pomodoroComplete() {
+    this.pausePomodoro();
+
+    const message = this.isWorkTime ?
+      'Work session complete! Time for a break.' :
+      'Break complete! Ready for another work session.';
+
+    notify({
+      type: 'success',
+      title: 'Pomodoro Complete',
+      message: message,
+      sticky: true
+    });
+
+    // Switch between work and break
+    this.isWorkTime = !this.isWorkTime;
+    const input = document.getElementById(this.isWorkTime ? 'pomodoroWork' : 'pomodoroBreak');
+    this.pomodoroTime = (input ? parseInt(input.value) : (this.isWorkTime ? 25 : 5)) * 60;
+    this.updatePomodoroDisplay();
+
+    // Auto-start next session
+    this.startPomodoro();
+  }
+
+  updatePomodoroDisplay() {
+    const timerEl = document.getElementById('pomodoroTimer');
+    if (timerEl) {
+      const minutes = Math.floor(this.pomodoroTime / 60);
+      const seconds = this.pomodoroTime % 60;
+      timerEl.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+  }
+
+  updatePomodoroSettings() {
+    if (!this.isPomodoroRunning) {
+      this.resetPomodoro();
+    }
+  }
+
+  // File functionality
+  uploadFile() {
+    const fileInput = document.getElementById('fileUpload');
+    if (!fileInput || !fileInput.files[0]) {
+      notify({
+        type: 'error',
+        title: 'No File Selected',
+        message: 'Please select a file to upload.'
+      });
+      return;
+    }
+
+    const file = fileInput.files[0];
+    this.showFilePreview(file);
+    this.saveFileMetadata(file);
+
+    notify({
+      type: 'success',
+      title: 'File Uploaded',
+      message: `"${file.name}" has been uploaded.`
+    });
+
+    // Reset file input
+    fileInput.value = '';
+  }
+
+  showFilePreview(file) {
+    const preview = document.getElementById('filePreview');
+    const nameEl = document.getElementById('fileName');
+    const sizeEl = document.getElementById('fileSize');
+
+    if (preview && nameEl && sizeEl) {
+      nameEl.textContent = file.name;
+      sizeEl.textContent = this.formatFileSize(file.size);
+      preview.style.display = 'block';
+    }
+  }
+
+  formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  saveFileMetadata(file) {
+    const files = JSON.parse(localStorage.getItem(this.filesKey) || '[]');
+    files.push({
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: file.lastModified,
+      uploadDate: new Date().toISOString()
+    });
+
+    localStorage.setItem(this.filesKey, JSON.stringify(files));
+    this.updateStorageUsage();
+  }
+
+  loadFiles() {
+    this.updateStorageUsage();
+  }
+
+  updateStorageUsage() {
+    const files = JSON.parse(localStorage.getItem(this.filesKey) || '[]');
+    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+    const usedMB = (totalSize / (1024 * 1024)).toFixed(2);
+    const progress = Math.min((usedMB / 100) * 100, 100); // 100MB max storage
+
+    const usedEl = document.getElementById('storageUsed');
+    const progressEl = document.getElementById('storageProgress');
+
+    if (usedEl) usedEl.textContent = `${usedMB} MB / 100 MB`;
+    if (progressEl) progressEl.style.width = `${progress}%`;
+  }
 }
 
-function updateWeatherUIFromCache(data) {
-    const weatherTemp = document.getElementById('weatherTemp');
-    const weatherLocation = document.getElementById('weatherLocation');
-    const weatherDescription = document.getElementById('weatherDescription');
-    const weatherIcon = document.getElementById('weatherIcon');
-    const feelsLike = document.getElementById('feelsLike');
-    const humidity = document.getElementById('humidity');
-    const windSpeed = document.getElementById('windSpeed');
-    const visibility = document.getElementById('visibility');
-    
-    weatherTemp.textContent = `${data.temp}°C`;
-    weatherLocation.textContent = `${data.city}, ${data.country}`;
-    weatherDescription.textContent = capitalizeFirstLetter(data.description);
-    feelsLike.textContent = `${data.feelsLikeTemp}°C`;
-    humidity.textContent = `${data.humidity}%`;
-    windSpeed.textContent = `${data.windSpeed} km/h`;
-    visibility.textContent = `${data.visibilityKm} km`;
-    
-    updateWeatherIcon(weatherIcon, data.iconCode);
-    
-    // Show that this is cached data
-    const locationElement = document.getElementById('weatherLocation');
-    locationElement.innerHTML = `${data.city}, ${data.country} <span class="text-xs text-gray-500">(Cached)</span>`;
-}
+// ===============================
+// EXISTING FUNCTIONALITY
+// ===============================
 
-// Time and Date Widget
+// Time & Date Widget
 function updateTimeAndDate() {
+  const timeEl = document.getElementById("currentTime");
+  const dateEl = document.getElementById("currentDate");
+  if (!timeEl || !dateEl) return;
+
+  const now = new Date();
+
+  // Format time in 12-hour format with AM/PM
+  let hours = now.getHours();
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  const seconds = String(now.getSeconds()).padStart(2, "0");
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12 || 12; // convert 0 to 12 for midnight
+  const formattedTime = `${hours}:${minutes}:${seconds} ${ampm}`;
+
+  // Format date as: Wednesday, Oct 23, 2025
+  const options = { weekday: "long", year: "numeric", month: "short", day: "numeric" };
+  const formattedDate = now.toLocaleDateString(undefined, options);
+
+  timeEl.textContent = formattedTime;
+  dateEl.textContent = formattedDate;
+}
+
+// YouTube Stats
+async function updateYouTubeStats() {
+  const CHANNEL_ID = "UCDwG7iHjjI0W92w9Ipl6r1w";
+
+  try {
+    const res = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&id=${CHANNEL_ID}&key=${YOUTUBE_API_KEY}`);
+    const data = await res.json();
+
+    if (!data.items || !data.items.length) throw new Error("Channel not found");
+
+    const { statistics, snippet } = data.items[0];
+
+    // Format numbers (e.g., 1.2K)
+    const formatNumber = (n) => Intl.NumberFormat('en-US', { notation: "compact" }).format(n);
+
+    // Format joined date
+    const joinDate = new Date(snippet.publishedAt);
+    const formattedJoinDate = joinDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+    // Update UI
+    document.getElementById("yt-channel-name").textContent = snippet.title;
+    document.getElementById("yt-joined").textContent = `Joined: ${formattedJoinDate}`;
+    document.getElementById("yt-subs").textContent = formatNumber(statistics.subscriberCount);
+    document.getElementById("yt-views").textContent = formatNumber(statistics.viewCount);
+    document.getElementById("yt-videos").textContent = statistics.videoCount;
+  } catch (err) {
+    console.error("Error fetching YouTube stats:", err);
+  }
+}
+
+// ===============================
+// INITIALIZATION
+// ===============================
+
+document.addEventListener('DOMContentLoaded', function () {
+  // Initialize all widgets
+  window.notificationSystem = new NotificationSystem();
+  new ProfileWidget();
+  new ThemeSwitcher();
+  new WeatherWidget();
+  new MiniAnalytics();
+  new CalendarWidget();
+  new QuoteWidget();
+  new SocialWidget();
+  new MusicWidget();
+  new QuickTools();
+
+  // Initialize existing functionality
+  setInterval(updateTimeAndDate, 1000);
+  updateTimeAndDate();
+  updateYouTubeStats();
+  setInterval(updateYouTubeStats, 60000);
+
+  // Demo notifications
+  setTimeout(() => {
+    notify({
+      type: 'success',
+      title: 'Dashboard Ready',
+      message: 'All widgets have been initialized successfully.'
+    });
+  }, 1000);
+
+  // Add sample events for demo
+  setTimeout(() => {
+    const calendar = new CalendarWidget();
+    const events = calendar.getEvents();
+    if (events.length === 0) {
+      const today = new Date().toISOString().split('T')[0];
+      const sampleEvent = {
+        id: 'demo-event',
+        title: 'Welcome to Your Dashboard',
+        date: today,
+        time: '12:00',
+        category: 'personal'
+      };
+      events.push(sampleEvent);
+      localStorage.setItem('calendarEvents', JSON.stringify(events));
+      calendar.renderCalendar();
+      calendar.renderEvents();
+    }
+  }, 2000);
+});
+
+// ===============================
+// One Piece Countdown Widget
+// ===============================
+(function () {
+  const episodeDisplay = document.getElementById("onePieceEpisode");
+  const timerDisplay = document.getElementById("onePieceTimer");
+  const statusDisplay = document.getElementById("onePieceStatus");
+
+  // Load saved episode number or default to 1147
+  let currentEpisode = parseInt(localStorage.getItem("onePieceEpisodeNum")) || 1147;
+
+  function getNextSunday23() {
     const now = new Date();
-    
-    // Update time
-    const timeElement = document.getElementById('currentTime');
-    if (timeElement) {
-        timeElement.textContent = now.toLocaleTimeString();
-    }
-    
-    // Update date
-    const dateElement = document.getElementById('currentDate');
-    if (dateElement) {
-        dateElement.textContent = now.toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-        });
-    }
-}
+    const next = new Date();
 
-// Anime API Integration
-async function fetchLatestAnimeUpdates() {
-    const container = document.getElementById('animeUpdatesContainer');
-    
-    try {
-        // Show loading state
-        container.innerHTML = `
-            <div class="text-center py-4">
-                <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-                <p>Loading anime updates...</p>
-            </div>
-        `;
-        
-        // GraphQL query for latest anime
-        const query = `
-            query {
-                Page(page: 1, perPage: 10) {
-                    media(type: ANIME, status: RELEASING, sort: [START_DATE_DESC]) {
-                        id
-                        title {
-                            romaji
-                            english
-                        }
-                        coverImage {
-                            large
-                        }
-                        description
-                        episodes
-                        nextAiringEpisode {
-                            episode
-                            timeUntilAiring
-                        }
-                        status
-                        averageScore
-                    }
-                }
-            }
-        `;
-        
-        const response = await fetch('https://graphql.anilist.co', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            },
-            body: JSON.stringify({
-                query: query
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.errors) {
-            throw new Error(data.errors[0].message);
-        }
-        
-        const animeList = data.data.Page.media;
-        
-        // Clear container
-        container.innerHTML = '';
-        
-        if (animeList.length === 0) {
-            container.innerHTML = '<p class="text-center py-4">No recent anime updates found.</p>';
-            return;
-        }
-        
-        // Display anime updates
-        animeList.forEach(anime => {
-            const animeElement = createAnimeUpdateElement(anime);
-            container.appendChild(animeElement);
-        });
-        
-    } catch (error) {
-        console.error('Error fetching anime updates:', error);
-        container.innerHTML = `
-            <div class="text-center py-4 text-red-500">
-                <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
-                <p>Failed to load anime updates</p>
-                <p class="text-sm mt-2">${error.message}</p>
-            </div>
-        `;
-    }
-}
+    // Set to next Sunday 23:00 (11 PM)
+    next.setDate(now.getDate() + ((7 - now.getDay()) % 7 || 7));
+    next.setHours(23, 0, 0, 0);
 
-// Function to create anime update element
-function createAnimeUpdateElement(anime) {
-    const element = document.createElement('div');
-    element.className = 'anime-update-item';
-    
-    // Format description (remove HTML tags)
-    const description = anime.description 
-        ? anime.description.replace(/<[^>]*>/g, '').substring(0, 100) + '...'
-        : 'No description available.';
-    
-    // Get status badge
-    const statusBadge = getStatusBadge(anime.status);
-    
-    // Calculate next episode info
-    let episodeInfo = '';
-    if (anime.nextAiringEpisode) {
-        const daysUntilAiring = Math.floor(anime.nextAiringEpisode.timeUntilAiring / (24 * 60 * 60));
-        const hoursUntilAiring = Math.floor((anime.nextAiringEpisode.timeUntilAiring % (24 * 60 * 60)) / (60 * 60));
-        
-        if (daysUntilAiring > 0) {
-            episodeInfo = `Episode ${anime.nextAiringEpisode.episode} in ${daysUntilAiring} day${daysUntilAiring > 1 ? 's' : ''}`;
-        } else if (hoursUntilAiring > 0) {
-            episodeInfo = `Episode ${anime.nextAiringEpisode.episode} in ${hoursUntilAiring} hour${hoursUntilAiring > 1 ? 's' : ''}`;
-        } else {
-            episodeInfo = `Episode ${anime.nextAiringEpisode.episode} airing soon`;
-        }
-    } else if (anime.episodes) {
-        episodeInfo = `${anime.episodes} episodes`;
+    // If it's already past Sunday 11PM this week, jump to next week
+    if (next <= now) next.setDate(next.getDate() + 7);
+    return next;
+  }
+
+  let nextAirTime = getNextSunday23();
+
+  function updateCountdown() {
+    const now = new Date();
+    const diff = nextAirTime - now;
+
+    if (diff <= 0) {
+      // Episode Released
+      timerDisplay.textContent = "Episode Released!";
+      statusDisplay.textContent = "Available Now 🎬";
+
+      // Increment next episode once per week
+      setTimeout(() => {
+        currentEpisode++;
+        localStorage.setItem("onePieceEpisodeNum", currentEpisode);
+        nextAirTime = getNextSunday23();
+        episodeDisplay.textContent = `Episode ${currentEpisode}`;
+      }, 10 * 60 * 1000); // after 10 minutes
+
+      return;
     }
-    
-    element.innerHTML = `
-        <div class="anime-cover-small">
-            ${anime.coverImage ? 
-                `<img src="${anime.coverImage.large}" alt="${anime.title.romaji}" loading="lazy">` : 
-                anime.title.romaji.substring(0, 10)
+
+    // Calculate remaining time
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+    const minutes = Math.floor((diff / (1000 * 60)) % 60);
+    const seconds = Math.floor((diff / 1000) % 60);
+
+    // Display
+    timerDisplay.textContent = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+    episodeDisplay.textContent = `Episode ${currentEpisode}`;
+  }
+
+  // Update every second
+  updateCountdown();
+  setInterval(updateCountdown, 1000);
+})();
+
+// ==============================
+// Anime Progress Chart (2025)
+// ==============================
+document.addEventListener("DOMContentLoaded", () => {
+  const ctx = document.getElementById("animeProgressChart");
+  if (!ctx) return;
+
+  const totalAnimeText = document.getElementById("totalAnime2025");
+  const totalStats = document.getElementById("totalStats");
+  const uploadInput = document.getElementById("animeJsonUpload");
+
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  let animeData = JSON.parse(localStorage.getItem("myAnimeListData")) || null;
+
+  // ✅ Initialize Chart.js chart
+  const chart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: months,
+      datasets: [
+        {
+          label: "Anime Completed",
+          data: [],
+          yAxisID: "yAnime",
+          backgroundColor: "rgba(147, 51, 234, 0.3)",
+          borderColor: "rgba(147, 51, 234, 1)",
+          borderWidth: 2,
+          borderRadius: 8,
+          hoverBackgroundColor: "rgba(168, 85, 247, 0.6)",
+          order: 2,
+        },
+        {
+          label: "Hours Watched",
+          data: [],
+          yAxisID: "yHours",
+          type: "line",
+          borderColor: "rgba(255, 165, 0, 0.9)",
+          borderWidth: 2,
+          backgroundColor: "rgba(209, 219, 21, 0.696)",
+          pointBackgroundColor: "rgba(255,165,0,1)",
+          pointRadius: 5,
+          pointHoverRadius: 6,
+          fill: false,
+          tension: 0.4,
+          order: 1,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: "index",
+        intersect: false
+      },
+      scales: {
+        x: {
+          grid: { color: "rgba(255,255,255,0.05)" },
+          ticks: { color: "#aaa" }
+        },
+        yAnime: {
+          type: "linear",
+          position: "left",
+          beginAtZero: true,
+          grid: { color: "rgba(255,255,255,0.05)" },
+          ticks: { color: "#aaa" },
+          title: { display: true, text: "Anime Completed", color: "#ccc", font: { size: 12 } }
+        },
+        yHours: {
+          type: "linear",
+          position: "right",
+          beginAtZero: true,
+          grid: { drawOnChartArea: false },
+          ticks: { color: "#aaa" },
+          title: { display: true, text: "Hours Watched", color: "#ccc", font: { size: 12 } }
+        }
+      },
+      plugins: {
+        legend: {
+          labels: { color: "#ccc", boxWidth: 12, usePointStyle: true }
+        },
+        tooltip: {
+          backgroundColor: "rgba(30,30,40,0.9)",
+          borderColor: "rgba(255,255,255,0.2)",
+          borderWidth: 1,
+          titleColor: "#fff",
+          bodyColor: "#ddd",
+          padding: 10,
+          callbacks: {
+            label: function (ctx) {
+              if (ctx.dataset.label === "Anime Completed") {
+                return ` ${ctx.dataset.label}: ${ctx.formattedValue} anime`;
+              } else {
+                return ` ${ctx.dataset.label}: ${ctx.formattedValue} hours`;
+              }
             }
-        </div>
-        <div class="anime-update-info">
-            <div class="anime-update-title">${anime.title.english || anime.title.romaji}</div>
-            <div class="anime-update-meta">
-                ${statusBadge}
-                ${anime.averageScore ? `<span>⭐ ${anime.averageScore / 10}/10</span>` : ''}
-                ${episodeInfo ? `<span>• ${episodeInfo}</span>` : ''}
-            </div>
-            <div class="anime-update-description">${description}</div>
-        </div>
+          }
+        }
+      },
+      animation: {
+        duration: 1200,
+        easing: "easeOutQuart"
+      }
+    }
+  });
+
+  // ✅ Helper: format number to "k" style
+  function formatK(num) {
+    if (num < 1000) return num.toString();
+    return (num / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+  }
+
+  // ✅ Parse uploaded JSON data
+  function parseAnimeData(data) {
+    const monthlyAnime = Array(12).fill(0);
+    const monthlyHours = Array(12).fill(0);
+
+    let totalAnime = 0;
+    let totalEpisodes = 0;
+    let totalMinutes = 0;
+
+    data.forEach(anime => {
+      if (!anime.finishDate) return;
+      const date = new Date(anime.finishDate);
+      if (isNaN(date) || date.getFullYear() !== 2025) return;
+
+      const month = date.getMonth();
+      monthlyAnime[month]++;
+
+      const eps = parseInt(anime.episodes || 0);
+      const duration = parseInt(anime.duration || 0);
+      const minutes = eps * duration;
+
+      totalAnime++;
+      totalEpisodes += eps;
+      totalMinutes += minutes;
+      monthlyHours[month] += minutes / 60;
+    });
+
+    chart.data.datasets[0].data = monthlyAnime;
+    chart.data.datasets[1].data = monthlyHours;
+    chart.update();
+
+    const totalHours = Math.round(totalMinutes / 60);
+
+    // ✅ Compact “k” format + hover for real numbers
+    const formattedHours = formatK(totalHours);
+    const formattedEps = formatK(totalEpisodes);
+    totalAnimeText.textContent = `Total Anime in 2025: ${totalAnime}`;
+    totalStats.innerHTML = `
+      Episodes: <span title="${totalEpisodes.toLocaleString()}">${formattedEps}</span> | 
+      Hours: <span title="${totalHours.toLocaleString()}">${formattedHours}</span>
     `;
-    
-    return element;
-}
+  }
 
-// Function to get status badge
-function getStatusBadge(status) {
-    switch(status) {
-        case 'RELEASING':
-            return '<span class="anime-status-badge status-releasing">Airing</span>';
-        case 'FINISHED':
-            return '<span class="anime-status-badge status-finished">Completed</span>';
-        case 'NOT_YET_RELEASED':
-            return '<span class="anime-status-badge status-not-yet-released">Upcoming</span>';
-        default:
-            return `<span class="anime-status-badge">${status}</span>`;
-    }
-}
+  // ✅ Handle JSON upload
+  uploadInput.addEventListener("change", e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        localStorage.setItem("myAnimeListData", JSON.stringify(data));
+        animeData = data;
+        parseAnimeData(data);
+      } catch (err) {
+        alert("Invalid JSON file. Please upload a valid anime data backup.");
+      }
+    };
+    reader.readAsText(file);
+  });
 
-// Fetch trending anime
-async function fetchTrendingAnime() {
-    const container = document.getElementById('trendingAnimeContainer');
-    
-    try {
-        // Show loading state
-        container.innerHTML = `
-            <div class="text-center py-2">
-                <i class="fas fa-spinner fa-spin text-lg mb-1"></i>
-                <p class="text-sm">Loading trending anime...</p>
-            </div>
-        `;
-        
-        // GraphQL query for trending anime
-        const query = `
-            query {
-                Page(page: 1, perPage: 8) {
-                    media(type: ANIME, sort: [TRENDING_DESC, POPULARITY_DESC]) {
-                        id
-                        title {
-                            romaji
-                            english
-                        }
-                        averageScore
-                    }
-                }
-            }
-        `;
-        
-        const response = await fetch('https://graphql.anilist.co', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            },
-            body: JSON.stringify({
-                query: query
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.errors) {
-            throw new Error(data.errors[0].message);
-        }
-        
-        const trendingAnime = data.data.Page.media;
-        
-        // Clear container
-        container.innerHTML = '';
-        
-        if (trendingAnime.length === 0) {
-            container.innerHTML = '<p class="text-center py-2 text-sm">No trending anime found.</p>';
-            return;
-        }
-        
-        // Display trending anime
-        trendingAnime.forEach((anime, index) => {
-            const animeElement = createTrendingAnimeElement(anime, index + 1);
-            container.appendChild(animeElement);
-        });
-        
-    } catch (error) {
-        console.error('Error fetching trending anime:', error);
-        container.innerHTML = `
-            <div class="text-center py-2 text-red-500 text-sm">
-                <i class="fas fa-exclamation-triangle text-lg mb-1"></i>
-                <p>Failed to load trending anime</p>
-            </div>
-        `;
-    }
-}
+  // ✅ Load saved data automatically
+  if (animeData) parseAnimeData(animeData);
+});
 
-// Function to create trending anime element
-function createTrendingAnimeElement(anime, rank) {
-    const element = document.createElement('div');
-    element.className = 'trending-anime-item';
-    
-    element.innerHTML = `
-        <div class="trending-rank">${rank}</div>
-        <div class="trending-anime-title">${anime.title.english || anime.title.romaji}</div>
-        ${anime.averageScore ? `<div class="trending-score">${anime.averageScore / 10}</div>` : ''}
-    `;
-    
-    return element;
-}
